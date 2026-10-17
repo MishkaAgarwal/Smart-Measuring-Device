@@ -28,6 +28,8 @@ A digital distance-measuring device that uses an ultrasonic sensor to estimate d
 - Jumper wires
 - Push Button
 
+![Smart Measuring Device Circuit Diagram](Circuit-Diagram.png)
+
 ## Connections
 
 | Component / Pin | Typical connection |
