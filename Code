@@ -1,0 +1,150 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SH110X.h>
+
+// SH1106 Display Configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+#define I2C_ADDRESS   0x3C
+
+// Pin Definitions
+#define OLED_SDA 21
+#define OLED_SCL 22
+#define TRIG_PIN 5
+#define ECHO_PIN 18
+#define BUTTON_PIN 4
+#define LASER_PIN 15
+
+// Speed of sound in cm/us
+#define SOUND_SPEED 0.0343
+
+// Initialize SH1106G display object
+Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// State Variables for Hold Button
+bool isHeld = false;
+bool lastButtonReading = HIGH;
+bool buttonState = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50;
+
+// Frozen Measurement Storage
+float distanceCm = 0.0;
+float distanceM = 0.0;
+float distanceFt = 0.0;
+bool isValidMeasurement = false;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize custom I2C pins for ESP32
+  Wire.begin(OLED_SDA, OLED_SCL);
+
+  // Initialize SH1106 OLED
+  if (!display.begin(I2C_ADDRESS, true)) {
+    Serial.println(F("SH1106 OLED initialization failed"));
+    for (;;); // Stop execution
+  }
+
+  // Initialize Ultrasonic Sensor Pins, Hold Button & Laser
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LASER_PIN, OUTPUT);
+  
+  digitalWrite(LASER_PIN, HIGH); // Turn on laser initially
+
+  // Display Splash Screen
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SH110X_WHITE);
+  display.setCursor(15, 25);
+  display.println(F("Smart Tape Ready"));
+  display.display();
+  delay(1500);
+}
+
+void loop() {
+  // Button Debouncing Logic
+  bool reading = digitalRead(BUTTON_PIN);
+
+  if (reading != lastButtonReading) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      // Toggle HOLD state on press
+      if (buttonState == LOW) {
+        isHeld = !isHeld;
+      }
+    }
+  }
+  lastButtonReading = reading;
+
+  // Control Laser Module state based on HOLD status
+  if (isHeld) {
+    digitalWrite(LASER_PIN, LOW); // Turn off laser when measurement is paused
+  } else {
+    digitalWrite(LASER_PIN, HIGH); // Turn on laser when actively measuring
+  }
+
+  // Take distance measurements when NOT in HOLD mode
+  if (!isHeld) {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+
+    long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+    if (duration == 0) {
+      isValidMeasurement = false;
+    } else {
+      isValidMeasurement = true;
+      distanceCm = (duration * SOUND_SPEED) / 2.0;
+      distanceM = distanceCm / 100.0;
+      distanceFt = distanceCm / 30.48;
+    }
+  }
+
+  // Render Output to SH1106 OLED
+  display.clearDisplay();
+
+  // Display Header
+  display.setTextSize(1);
+  display.setTextColor(SH110X_WHITE);
+  display.setCursor(0, 0);
+  if (isHeld) {
+    display.print(F("MEASURE   [HOLD]"));
+  } else {
+    display.print(F("MEASUREMENT"));
+  }
+  display.drawLine(0, 10, 128, 10, SH110X_WHITE);
+
+  if (!isValidMeasurement) {
+    display.setCursor(15, 30);
+    display.println(F("Out of Range!"));
+  } else {
+    // Centimeters display
+    display.setCursor(0, 18);
+    display.print(F("CM : "));
+    display.print(distanceCm, 1);
+
+    // Meters display
+    display.setCursor(0, 34);
+    display.print(F("M  : "));
+    display.print(distanceM, 2);
+
+    // Feet display
+    display.setCursor(0, 50);
+    display.print(F("FT : "));
+    display.print(distanceFt, 2);
+  }
+
+  display.display();
+  delay(30);
+}
