@@ -2,7 +2,7 @@
 
 ## Aim
 
-To measure the distance between the device and an object and display the measurement on an OLED screen.
+To measure the distance between the device and an object and display the measurement on an OLED Screen.
 
 ## What is the project?
 
